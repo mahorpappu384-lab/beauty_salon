@@ -33,19 +33,17 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        # Email support add kiya
-        login_field = attrs.get('username') or attrs.get('email')
-        password = attrs.get('password')
+        # Email se login support - 'username' field mein email bhi aa sakta hai
+        login_input = attrs.get('username', '')
 
-        if login_field and password:
-            # Agar email diya gaya hai to username mein convert kar do
-            if '@' in login_field:
-                try:
-                    user = User.objects.get(email=login_field)
-                    attrs['username'] = user.username
-                except User.DoesNotExist:
-                    # Agar email nahi mila to username ke roop mein try hoga
-                    pass
+        if login_input and '@' in login_input:
+            # Email hai → username dhundo
+            try:
+                user_obj = User.objects.get(email__iexact=login_input)
+                attrs['username'] = user_obj.username
+            except User.DoesNotExist:
+                # Email se user nahi mila, super ko fail hone do (correct error)
+                pass
 
         data = super().validate(attrs)
         data['user'] = UserProfileSerializer(self.user).data

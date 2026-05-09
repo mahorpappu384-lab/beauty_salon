@@ -123,12 +123,16 @@ class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        # Refresh token blacklist karo (agar diya gaya ho)
+        # Error ignore karo — client already tokens delete kar chuka hoga
         try:
-            token = RefreshToken(request.data['refresh'])
-            token.blacklist()
-            return Response({'message': 'Logged out successfully.'})
+            refresh_token = request.data.get('refresh')
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
         except Exception:
-            return Response({'error': 'Invalid token.'}, status=status.HTTP_400_BAD_REQUEST)
+            pass  # Already blacklisted ya invalid — logout phir bhi successful hai
+        return Response({'message': 'Logged out successfully.'})
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
