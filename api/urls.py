@@ -111,6 +111,7 @@ urlpatterns = [
 
     # ─── HOME SCREEN ──────────────────────────────────────────
     path('home/', views.HomeScreenView.as_view(), name='home'),
+    path('health/', views.HealthView.as_view(), name='health'),
 
     # ─── SERVICES ─────────────────────────────────────────────
     path('services/', views.ServiceListView.as_view(), name='service-list'),
