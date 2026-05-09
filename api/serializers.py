@@ -22,7 +22,7 @@ from .models import (
 # ─────────────────────────────────────────────────────────────
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """JWT login - extra user info token mein dalta hai."""
+    """JWT login - Email ya Username dono support karta hai."""
 
     @classmethod
     def get_token(cls, user):
@@ -33,6 +33,20 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
+        # Email support add kiya
+        login_field = attrs.get('username') or attrs.get('email')
+        password = attrs.get('password')
+
+        if login_field and password:
+            # Agar email diya gaya hai to username mein convert kar do
+            if '@' in login_field:
+                try:
+                    user = User.objects.get(email=login_field)
+                    attrs['username'] = user.username
+                except User.DoesNotExist:
+                    # Agar email nahi mila to username ke roop mein try hoga
+                    pass
+
         data = super().validate(attrs)
         data['user'] = UserProfileSerializer(self.user).data
         return data
