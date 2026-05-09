@@ -13,7 +13,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import (
     User, ServiceCategory, Service, ProductCategory, Product,
     Offer, TimeSlot, Booking, GalleryPhoto, Wishlist,
-    Review, Notification, Coupon, Payment
+    Review, Notification, Coupon, Payment, Address, ProductOrder, ProductOrderItem
 )
 
 
@@ -594,3 +594,145 @@ class CloudinarySignatureSerializer(serializers.Serializer):
         default='beauty_salon',
         help_text='Cloudinary folder: services, products, gallery, profiles etc.'
     )
+
+# ─── serializers.py mein add karo ────────────────────────────────────────────
+
+class AddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Address
+        fields = [
+            'id', 'full_name', 'phone', 'address_line1', 'address_line2',
+            'city', 'state', 'pincode', 'is_default', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        return Address.objects.create(user=user, **validated_data)
+
+
+class ProductOrderItemSerializer(serializers.ModelSerializer):
+    product_id = serializers.IntegerField(source='product.id', read_only=True)
+    total = serializers.ReadOnlyField()
+
+    class Meta:
+        model = ProductOrderItem
+        fields = [
+            'id', 'product_id', 'product_name', 'product_image',
+            'price', 'quantity', 'total'
+        ]
+
+
+class ProductOrderSerializer(serializers.ModelSerializer):
+    items = ProductOrderItemSerializer(many=True, read_only=True)
+    address = AddressSerializer(read_only=True)
+
+    class Meta:
+        model = ProductOrder
+        fields = [
+            'id', 'order_number', 'items', 'address',
+            'subtotal', 'delivery_charge', 'discount', 'total_amount',
+            'status', 'payment_method', 'payment_status', 'notes',
+            'estimated_delivery', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'order_number', 'status', 'payment_status',
+            'estimated_delivery', 'created_at', 'updated_at'
+        ]
+
+
+class ProductOrderCreateSerializer(serializers.Serializer):
+    """Customer naya order place karne ke liye."""
+    address_id = serializers.IntegerField()
+    payment_method = serializers.ChoiceField(
+        choices=['cod', 'online'], default='cod'
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default='')
+    items = serializers.ListField(
+        child=serializers.DictField(), min_length=1
+    )
+
+    def validate_address_id(self, value):
+        user = self.context['request'].user
+        try:
+            Address.objects.get(id=value, user=user)
+        except Address.DoesNotExist:
+            raise serializers.ValidationError("Address not found.")
+        return value
+
+    def validate_items(self, items):
+        validated = []
+        for item in items:
+            product_id = item.get('product_id')
+            quantity = item.get('quantity', 1)
+            if not product_id:
+                raise serializers.ValidationError("Each item must have product_id.")
+            try:
+                product = Product.objects.get(id=product_id, is_active=True)
+            except Product.DoesNotExist:
+                raise serializers.ValidationError(f"Product {product_id} not found.")
+            if product.stock < quantity:
+                raise serializers.ValidationError(
+                    f"Insufficient stock for {product.name}. Available: {product.stock}"
+                )
+            validated.append({'product': product, 'quantity': int(quantity)})
+        return validated
+
+    def create(self, validated_data):
+        from django.utils import timezone
+        import datetime
+
+        user = self.context['request'].user
+        address = Address.objects.get(id=validated_data['address_id'])
+        items_data = validated_data['items']
+
+        # Calculate pricing
+        subtotal = sum(
+            item['product'].discounted_price * item['quantity']
+            for item in items_data
+        )
+        delivery_charge = 0 if subtotal >= 499 else 49
+        total_amount = subtotal + delivery_charge
+
+        # Create order
+        order = ProductOrder.objects.create(
+            user=user,
+            address=address,
+            payment_method=validated_data['payment_method'],
+            notes=validated_data.get('notes', ''),
+            subtotal=subtotal,
+            delivery_charge=delivery_charge,
+            total_amount=total_amount,
+            estimated_delivery=timezone.now().date() + datetime.timedelta(days=4),
+        )
+
+        # Create items + reduce stock
+        for item_data in items_data:
+            product = item_data['product']
+            qty = item_data['quantity']
+            ProductOrderItem.objects.create(
+                order=order,
+                product=product,
+                product_name=product.name,
+                product_image=product.image_url,
+                price=product.discounted_price,
+                quantity=qty,
+            )
+            # Reduce stock
+            product.stock = max(0, product.stock - qty)
+            product.save(update_fields=['stock'])
+
+        return order
+
+
+class OrderStatusUpdateSerializer(serializers.ModelSerializer):
+    """Admin ke liye status update."""
+    class Meta:
+        model = ProductOrder
+        fields = ['status', 'estimated_delivery']
+
+    def validate_status(self, value):
+        allowed = ['confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'returned']
+        if value not in allowed:
+            raise serializers.ValidationError(f"Status must be one of: {allowed}")
+        return value

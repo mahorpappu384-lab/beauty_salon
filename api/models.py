@@ -493,3 +493,117 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment #{self.id} - {self.status} - ₹{self.amount}"
+
+# ─── models.py mein add karo (existing file ke neeche) ──────────────────────
+
+class Address(models.Model):
+    """Customer delivery addresses."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='addresses')
+    full_name = models.CharField(max_length=150)
+    phone = models.CharField(max_length=15)
+    address_line1 = models.CharField(max_length=255)
+    address_line2 = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100)
+    pincode = models.CharField(max_length=10)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'addresses'
+        ordering = ['-is_default', '-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} — {self.address_line1}, {self.city}"
+
+    def save(self, *args, **kwargs):
+        # Agar yeh default hai to baaki sabke is_default=False karo
+        if self.is_default:
+            Address.objects.filter(user=self.user, is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
+class ProductOrder(models.Model):
+    """Customer product orders."""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('confirmed', 'Confirmed'),
+        ('processing', 'Processing'),
+        ('shipped', 'Shipped'),
+        ('delivered', 'Delivered'),
+        ('cancelled', 'Cancelled'),
+        ('returned', 'Returned'),
+    ]
+
+    PAYMENT_METHOD_CHOICES = [
+        ('cod', 'Cash on Delivery'),
+        ('online', 'Online Payment'),
+    ]
+
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+        ('failed', 'Failed'),
+        ('refunded', 'Refunded'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='product_orders')
+    order_number = models.CharField(max_length=20, unique=True, blank=True)
+    address = models.ForeignKey(
+        Address, on_delete=models.SET_NULL, null=True, related_name='orders'
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    payment_method = models.CharField(
+        max_length=10, choices=PAYMENT_METHOD_CHOICES, default='cod'
+    )
+    payment_status = models.CharField(
+        max_length=10, choices=PAYMENT_STATUS_CHOICES, default='pending'
+    )
+
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    delivery_charge = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    discount = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    notes = models.TextField(blank=True)
+    estimated_delivery = models.DateField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'product_orders'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Order #{self.order_number} — {self.user.username}"
+
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            import random
+            self.order_number = f"ORD{random.randint(100000, 999999)}"
+        super().save(*args, **kwargs)
+
+
+class ProductOrderItem(models.Model):
+    """Individual items inside a ProductOrder."""
+    order = models.ForeignKey(
+        ProductOrder, on_delete=models.CASCADE, related_name='items'
+    )
+    product = models.ForeignKey(
+        Product, on_delete=models.SET_NULL, null=True, related_name='order_items'
+    )
+    product_name = models.CharField(max_length=200)   # Snapshot at order time
+    product_image = models.URLField(blank=True)        # Snapshot
+    price = models.DecimalField(max_digits=8, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = 'product_order_items'
+
+    def __str__(self):
+        return f"{self.product_name} x{self.quantity} — Order #{self.order.order_number}"
+
+    @property
+    def total(self):
+        return float(self.price) * self.quantity

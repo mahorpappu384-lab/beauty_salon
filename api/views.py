@@ -32,7 +32,7 @@ from .filters import ServiceFilter, ProductFilter
 from .models import (
     User, ServiceCategory, Service, ProductCategory, Product,
     Offer, TimeSlot, Booking, GalleryPhoto, Wishlist,
-    Review, Notification, Coupon, Payment
+    Review, Notification, Coupon, Payment, Address, ProductOrder, ProductOrderItem
 )
 from .serializers import (
     CustomTokenObtainPairSerializer, RegisterSerializer,
@@ -48,7 +48,10 @@ from .serializers import (
     GalleryPhotoWriteSerializer, WishlistSerializer,
     ReviewSerializer, NotificationSerializer,
     CouponVerifySerializer, CouponSerializer,
-    PaymentCreateSerializer, PaymentVerifySerializer,
+    PaymentCreateSerializer, PaymentVerifySerializer, AddressSerializer,
+    ProductOrderSerializer,
+    ProductOrderCreateSerializer,
+    OrderStatusUpdateSerializer,
     PaymentSerializer, CloudinarySignatureSerializer
 )
 from .utils import send_notification, generate_cloudinary_signature
@@ -857,3 +860,249 @@ class AdminUserDetailView(generics.RetrieveUpdateAPIView):
     queryset = User.objects.all()
     serializer_class = UserProfileSerializer
     permission_classes = [IsAdminUser]
+
+# ── ADDRESS VIEWS ─────────────────────────────────────────────────────────────
+
+class AddressListCreateView(generics.ListCreateAPIView):
+    """
+    GET  /api/orders/addresses/   → User ke addresses
+    POST /api/orders/addresses/   → Naya address add karo
+    """
+    serializer_class = AddressSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Address.objects.filter(user=self.request.user)
+
+
+class AddressDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET    /api/orders/addresses/<id>/
+    PUT    /api/orders/addresses/<id>/
+    PATCH  /api/orders/addresses/<id>/
+    DELETE /api/orders/addresses/<id>/
+    """
+    serializer_class = AddressSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Address.objects.filter(user=self.request.user)
+
+
+class AddressSetDefaultView(APIView):
+    """
+    PATCH /api/orders/addresses/<id>/set-default/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            address = Address.objects.get(pk=pk, user=request.user)
+        except Address.DoesNotExist:
+            return Response({'error': 'Address not found.'}, status=404)
+        address.is_default = True
+        address.save()
+        return Response(AddressSerializer(address).data)
+
+
+# ── ORDER VIEWS ───────────────────────────────────────────────────────────────
+
+class ProductOrderCreateView(generics.CreateAPIView):
+    """
+    POST /api/orders/
+    Body: {
+        address_id: 1,
+        payment_method: "cod" | "online",
+        notes: "...",
+        items: [
+            { product_id: 1, quantity: 2 },
+            ...
+        ]
+    }
+    """
+    serializer_class = ProductOrderCreateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        return serializer.save()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        order = self.perform_create(serializer)
+
+        # Send notification
+        send_notification(
+            user=request.user,
+            title='Order Placed! 🛍️',
+            message=f'Your order #{order.order_number} has been placed. Expected delivery in 3-5 days.',
+            notification_type='general',
+        )
+
+        return Response(
+            ProductOrderSerializer(order).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class MyOrderListView(generics.ListAPIView):
+    """
+    GET /api/orders/my/   → Logged-in user ke orders
+    """
+    serializer_class = ProductOrderSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['status']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        return ProductOrder.objects.filter(
+            user=self.request.user
+        ).prefetch_related('items__product').select_related('address')
+
+
+class MyOrderDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/orders/my/<id>/   → Order detail
+    """
+    serializer_class = ProductOrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return ProductOrder.objects.filter(
+            user=self.request.user
+        ).prefetch_related('items__product').select_related('address')
+
+
+class CancelOrderView(APIView):
+    """
+    POST /api/orders/my/<id>/cancel/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            order = ProductOrder.objects.get(pk=pk, user=request.user)
+        except ProductOrder.DoesNotExist:
+            return Response({'error': 'Order not found.'}, status=404)
+
+        if order.status not in ['pending', 'confirmed']:
+            return Response(
+                {'error': f'Cannot cancel order with status: {order.status}'},
+                status=400
+            )
+
+        # Restore stock
+        for item in order.items.all():
+            if item.product:
+                item.product.stock += item.quantity
+                item.product.save(update_fields=['stock'])
+
+        order.status = 'cancelled'
+        order.save()
+
+        send_notification(
+            user=request.user,
+            title='Order Cancelled',
+            message=f'Your order #{order.order_number} has been cancelled.',
+            notification_type='general',
+        )
+
+        return Response({'message': 'Order cancelled successfully.'})
+
+
+class ReturnOrderView(APIView):
+    """
+    POST /api/orders/my/<id>/return/
+    Body: { reason: "..." }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            order = ProductOrder.objects.get(pk=pk, user=request.user)
+        except ProductOrder.DoesNotExist:
+            return Response({'error': 'Order not found.'}, status=404)
+
+        if order.status != 'delivered':
+            return Response(
+                {'error': 'Only delivered orders can be returned.'},
+                status=400
+            )
+
+        order.status = 'returned'
+        order.save()
+
+        send_notification(
+            user=request.user,
+            title='Return Initiated',
+            message=f'Return request for order #{order.order_number} has been submitted.',
+            notification_type='general',
+        )
+
+        return Response({'message': 'Return request submitted successfully.'})
+
+
+# ── ADMIN ORDER VIEWS ─────────────────────────────────────────────────────────
+
+class AdminOrderListView(generics.ListAPIView):
+    """GET /api/admin/orders/"""
+    serializer_class = ProductOrderSerializer
+    permission_classes = [IsAdminUser]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'payment_method', 'payment_status']
+    search_fields = ['order_number', 'user__username', 'user__phone']
+    ordering = ['-created_at']
+    queryset = ProductOrder.objects.all().prefetch_related(
+        'items__product'
+    ).select_related('address', 'user')
+
+
+class AdminOrderUpdateView(generics.UpdateAPIView):
+    """
+    PATCH /api/admin/orders/<id>/status/
+    Body: { "status": "shipped", "estimated_delivery": "2024-12-30" }
+    """
+    serializer_class = OrderStatusUpdateSerializer
+    permission_classes = [IsAdminUser]
+    queryset = ProductOrder.objects.all()
+
+    def perform_update(self, serializer):
+        order = serializer.save()
+        msg_map = {
+            'confirmed': f'Your order #{order.order_number} has been confirmed!',
+            'processing': f'Your order #{order.order_number} is being processed.',
+            'shipped': f'Your order #{order.order_number} has been shipped!',
+            'delivered': f'Your order #{order.order_number} has been delivered. Enjoy!',
+        }
+        if order.status in msg_map:
+            send_notification(
+                user=order.user,
+                title=f'Order {order.status.title()}',
+                message=msg_map[order.status],
+                notification_type='general',
+            )
+
+
+# ─── urls.py mein add karo ────────────────────────────────────────────────────
+"""
+# Address URLs
+path('orders/addresses/', views.AddressListCreateView.as_view(), name='address-list'),
+path('orders/addresses/<int:pk>/', views.AddressDetailView.as_view(), name='address-detail'),
+path('orders/addresses/<int:pk>/set-default/', views.AddressSetDefaultView.as_view(), name='address-set-default'),
+
+# Order URLs
+path('orders/', views.ProductOrderCreateView.as_view(), name='product-order-create'),
+path('orders/my/', views.MyOrderListView.as_view(), name='my-orders'),
+path('orders/my/<int:pk>/', views.MyOrderDetailView.as_view(), name='my-order-detail'),
+path('orders/my/<int:pk>/cancel/', views.CancelOrderView.as_view(), name='order-cancel'),
+path('orders/my/<int:pk>/return/', views.ReturnOrderView.as_view(), name='order-return'),
+
+# Admin
+path('admin/orders/', views.AdminOrderListView.as_view(), name='admin-orders'),
+path('admin/orders/<int:pk>/status/', views.AdminOrderUpdateView.as_view(), name='admin-order-status'),
+"""
+
+# ─── migrations ke liye ───────────────────────────────────────────────────────
+# python manage.py makemigrations
+# python manage.py migrate

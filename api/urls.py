@@ -112,6 +112,21 @@ urlpatterns = [
     # ─── HOME SCREEN ──────────────────────────────────────────
     path('home/', views.HomeScreenView.as_view(), name='home'),
     path('health/', views.HealthView.as_view(), name='health'),
+    # Address URLs
+    path('orders/addresses/', views.AddressListCreateView.as_view(), name='address-list'),
+    path('orders/addresses/<int:pk>/', views.AddressDetailView.as_view(), name='address-detail'),
+    path('orders/addresses/<int:pk>/set-default/', views.AddressSetDefaultView.as_view(), name='address-set-default'),
+
+# Order URLs
+    path('orders/', views.ProductOrderCreateView.as_view(), name='product-order-create'),
+    path('orders/my/', views.MyOrderListView.as_view(), name='my-orders'),
+    path('orders/my/<int:pk>/', views.MyOrderDetailView.as_view(), name='my-order-detail'),
+    path('orders/my/<int:pk>/cancel/', views.CancelOrderView.as_view(), name='order-cancel'),
+    path('orders/my/<int:pk>/return/', views.ReturnOrderView.as_view(), name='order-return'),
+
+# Admin
+    path('admin/orders/', views.AdminOrderListView.as_view(), name='admin-orders'),
+    path('admin/orders/<int:pk>/status/', views.AdminOrderUpdateView.as_view(), name='admin-order-status'),
 
     # ─── SERVICES ─────────────────────────────────────────────
     path('services/', views.ServiceListView.as_view(), name='service-list'),
