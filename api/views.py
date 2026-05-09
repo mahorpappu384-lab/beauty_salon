@@ -19,7 +19,7 @@ from django.conf import settings
 from django.db.models import Avg
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import generics, status, filters
+from rest_framework import generics, status, filters, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
