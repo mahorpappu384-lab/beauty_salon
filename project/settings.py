@@ -49,7 +49,7 @@ INSTALLED_APPS = [
 # MIDDLEWARE
 # ─────────────────────────────────────────────
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',   # CORS sabse upar hona chahiye
+    'corsheaders.middleware.CorsMiddleware',   # Must be at the top
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -144,15 +144,37 @@ SIMPLE_JWT = {
 }
 
 # ─────────────────────────────────────────────
-# CORS - Flutter & Web frontend ke liye
+# CORS - FIXED & IMPROVED
 # ─────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://localhost:8080'
-).split(',')
-
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only in development
 CORS_ALLOW_CREDENTIALS = True
+
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "https://your-frontend-domain.com",   # ← Production mein yahan apna frontend URL daal dena
+    ]
+
+# Extra allowed origins (safe side)
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8080",
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
 
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -167,8 +189,7 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # ─────────────────────────────────────────────
-# CLOUDINARY - Frontend direct upload setup
-# Backend sirf URL store karta hai
+# CLOUDINARY
 # ─────────────────────────────────────────────
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': config('CLOUDINARY_CLOUD_NAME'),
@@ -195,11 +216,11 @@ RAZORPAY_KEY_ID = config('RAZORPAY_KEY_ID', default='')
 RAZORPAY_KEY_SECRET = config('RAZORPAY_KEY_SECRET', default='')
 
 # ─────────────────────────────────────────────
-# API DOCS (Swagger / ReDoc)
+# API DOCS
 # ─────────────────────────────────────────────
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Beauty Salon API',
-    'DESCRIPTION': 'Complete backend API for Beauty Salon app - Flutter & Web ready',
+    'DESCRIPTION': 'Complete backend API for Beauty Salon app',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
