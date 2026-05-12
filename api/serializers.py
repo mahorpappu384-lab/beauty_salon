@@ -19,10 +19,13 @@ from .models import (
 
 # ─────────────────────────────────────────────────────────────
 # AUTH SERIALIZERS
-# ─────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────
+
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """JWT login - Email ya Username dono support karta hai."""
+    """
+    Ab Email aur Username Dono se Login Ho Jayega
+    """
 
     @classmethod
     def get_token(cls, user):
@@ -30,21 +33,29 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['username'] = user.username
         token['email'] = user.email
         token['is_staff'] = user.is_staff
+        token['full_name'] = f"{user.first_name or ''} {user.last_name or ''}".strip()
         return token
 
     def validate(self, attrs):
-        # Email se login support - 'username' field mein email bhi aa sakta hai
-        login_input = attrs.get('username', '')
+        # Login input (email ya username)
+        email = attrs.get('email')
+        username = attrs.get('username')
 
-        if login_input and '@' in login_input:
-            # Email hai → username dhundo
+        # Agar email diya gaya hai to username mein convert kar do
+        if email and not username:
             try:
-                user_obj = User.objects.get(email__iexact=login_input)
+                user_obj = User.objects.get(email__iexact=email)
                 attrs['username'] = user_obj.username
             except User.DoesNotExist:
-                # Email se user nahi mila, super ko fail hone do (correct error)
-                pass
+                raise serializers.ValidationError({
+                    'email': 'No account found with this email address.'
+                })
 
+        # Agar username diya gaya hai to use karo
+        elif username:
+            attrs['username'] = username
+
+        # Ab SimpleJWT ko sahi data do
         data = super().validate(attrs)
         data['user'] = UserProfileSerializer(self.user).data
         return data
@@ -242,7 +253,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'brand', 'category', 'category_name',
             'image_url', 'image_urls', 'original_price', 'discount_percent',
             'discounted_price', 'stock', 'in_stock', 'is_featured',
-            'avg_rating', 'reviews', 'created_at'
+            'avg_rating', 'reviews', 'created_at', 'is_active'
         ]
 
     def get_reviews(self, obj):
