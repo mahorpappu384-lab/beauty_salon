@@ -126,6 +126,7 @@ urlpatterns = [
 
 # Admin
     path('admin/orders/', views.AdminOrderListView.as_view(), name='admin-orders'),
+    path('admin/orders/<int:pk>/', views.AdminOrderDetailView.as_view(), name='admin-order-detail'),   # ← Naya
     path('admin/orders/<int:pk>/status/', views.AdminOrderUpdateView.as_view(), name='admin-order-status'),
 
     # ─── SERVICES ─────────────────────────────────────────────

@@ -780,44 +780,73 @@ class PaymentVerifyView(APIView):
 # HOME SCREEN DATA
 # ─────────────────────────────────────────────────────────────
 
+"""
+======================================================
+  BACKEND PATCH — views.py mein sirf yeh class replace karo
+  
+  Purana HomeScreenView (line ~783) delete karke
+  neeche wala paste karo.
+  
+  Changes:
+  1. 'banners' key mein offers aate hain (pehle 'banners' tha — sahi hai)
+  2. 'categories' key add kiya — ServiceCategory with icon_url
+  3. 'offers' → 'banners' (Flutter provider already 'offers' key use karta tha,
+     isliye provider mein bhi fix diya hai)
+======================================================
+"""
+
 class HomeScreenView(APIView):
     """
     GET /api/home/
-    Single endpoint for home screen:
-    - Active banners/offers
-    - Featured services
-    - Featured products
-    - Featured gallery photos
-    
-    Flutter/Web ek hi call mein home screen data le sakta hai.
+    Single endpoint for home screen data — ek hi call mein sab.
+
+    Response keys:
+      banners          → Active promotional banners (Offer model)
+      categories       → Service categories with icon photos
+      featured_services→ Featured services (6 max)
+      featured_products→ Featured products (6 max)
+      gallery_preview  → Featured gallery photos (4 max)
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
+        from django.utils import timezone
+        from .serializers import (
+            OfferSerializer, ServiceCategorySerializer,
+            ServiceListSerializer, ProductListSerializer, GalleryPhotoSerializer
+        )
         now = timezone.now()
 
-        # Active offers/banners
-        offers = Offer.objects.filter(
-            is_active=True, start_date__lte=now, end_date__gte=now
-        ).order_by('order')[:5]
+        # 1. Active banners/offers
+        banners = Offer.objects.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).order_by('order')[:8]
 
-        # Featured services
+        # 2. Service categories (with icon_url for photo chips)
+        categories = ServiceCategory.objects.filter(
+            is_active=True
+        ).order_by('order', 'name')
+
+        # 3. Featured services
         featured_services = Service.objects.filter(
             is_active=True, is_featured=True
         ).select_related('category')[:6]
 
-        # Featured products
+        # 4. Featured products
         featured_products = Product.objects.filter(
             is_active=True, is_featured=True
         ).select_related('category')[:6]
 
-        # Featured gallery
+        # 5. Gallery preview
         gallery = GalleryPhoto.objects.filter(
             is_active=True, is_featured=True
         )[:4]
 
         return Response({
-            'banners': OfferSerializer(offers, many=True).data,
+            'banners': OfferSerializer(banners, many=True).data,
+            'categories': ServiceCategorySerializer(categories, many=True).data,
             'featured_services': ServiceListSerializer(featured_services, many=True).data,
             'featured_products': ProductListSerializer(featured_products, many=True).data,
             'gallery_preview': GalleryPhotoSerializer(gallery, many=True).data,
@@ -1087,6 +1116,18 @@ class AdminOrderUpdateView(generics.UpdateAPIView):
                 notification_type='general',
             )
 
+# ── ADMIN ORDER DETAIL ─────────────────────────────────────────────────────
+
+class AdminOrderDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/admin/orders/<id>/
+    Admin ke liye ek order ki poori detail (items + address + user info)
+    """
+    serializer_class = ProductOrderSerializer
+    permission_classes = [IsAdminUser]
+    queryset = ProductOrder.objects.all().prefetch_related(
+        'items__product'
+    ).select_related('address', 'user')
 
 # ─── urls.py mein add karo ────────────────────────────────────────────────────
 """

@@ -230,7 +230,7 @@ class ProductListSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'brand', 'category', 'category_name', 'description',
-            'image_url', 'original_price', 'discount_percent',
+            'image_url', 'original_price', 'discount_percent', 'is_active',
             'discounted_price', 'in_stock', 'stock', 'is_featured', 'avg_rating'
         ]
 
@@ -633,21 +633,34 @@ class ProductOrderItemSerializer(serializers.ModelSerializer):
 
 
 class ProductOrderSerializer(serializers.ModelSerializer):
+    """Admin Orders List + Detail ke liye"""
+    
+    # User related fields (correct way)
+    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    user_phone = serializers.CharField(source='user.phone', read_only=True)
+    
+    # Items summary
     items = ProductOrderItemSerializer(many=True, read_only=True)
+    items_count = serializers.SerializerMethodField()
     address = AddressSerializer(read_only=True)
 
     class Meta:
         model = ProductOrder
         fields = [
-            'id', 'order_number', 'items', 'address',
+            'id', 'order_number',
+            'user_name', 'username', 'user_phone',
+            'items', 'items_count', 'address',
             'subtotal', 'delivery_charge', 'discount', 'total_amount',
             'status', 'payment_method', 'payment_status', 'notes',
             'estimated_delivery', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'order_number', 'status', 'payment_status',
-            'estimated_delivery', 'created_at', 'updated_at'
+            'id', 'order_number', 'created_at', 'updated_at'
         ]
+
+    def get_items_count(self, obj):
+        return obj.items.count() if hasattr(obj, 'items') else 0
 
 
 class ProductOrderCreateSerializer(serializers.Serializer):
