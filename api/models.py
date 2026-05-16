@@ -187,6 +187,10 @@ class Offer(models.Model):
     linked_product = models.ForeignKey(
         Product, on_delete=models.SET_NULL, null=True, blank=True, related_name='offers'
     )
+    products = models.ManyToManyField(
+        Product, blank=True, related_name='offer_products',
+        help_text='Select products jo is offer mein dikhane hain'
+    )
 
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     start_date = models.DateTimeField()

@@ -280,8 +280,19 @@ class ProductWriteSerializer(serializers.ModelSerializer):
 # OFFER / BANNER SERIALIZERS
 # ─────────────────────────────────────────────────────────────
 
+class OfferProductMiniSerializer(serializers.ModelSerializer):
+    discounted_price = serializers.ReadOnlyField()
+    in_stock = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'brand', 'image_url', 
+                  'original_price', 'discount_percent', 
+                  'discounted_price', 'stock', 'in_stock']
+
 class OfferSerializer(serializers.ModelSerializer):
     is_valid = serializers.SerializerMethodField()
+    products = OfferProductMiniSerializer(many=True, read_only=True)  # ← yeh add karo
 
     class Meta:
         model = Offer
@@ -289,13 +300,13 @@ class OfferSerializer(serializers.ModelSerializer):
             'id', 'title', 'subtitle', 'description', 'image_url',
             'offer_type', 'linked_service', 'linked_product',
             'discount_percent', 'start_date', 'end_date',
-            'is_active', 'order', 'is_valid'
+            'is_active', 'order', 'is_valid',
+            'products',   # ← yeh add karo
         ]
 
     def get_is_valid(self, obj):
         now = timezone.now()
         return obj.is_active and obj.start_date <= now <= obj.end_date
-
 
 class OfferWriteSerializer(serializers.ModelSerializer):
     class Meta:
