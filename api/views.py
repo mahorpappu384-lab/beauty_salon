@@ -32,7 +32,7 @@ from .filters import ServiceFilter, ProductFilter
 from .models import (
     User, ServiceCategory, Service, ProductCategory, Product,
     Offer, TimeSlot, Booking, GalleryPhoto, Wishlist,
-    Review, Notification, Coupon, Payment, Address, ProductOrder, ProductOrderItem
+    Review, Notification, Coupon, Payment, Address, ProductOrder, ProductOrderItem, EmailOTP
 )
 from .serializers import (
     CustomTokenObtainPairSerializer, RegisterSerializer,
@@ -52,11 +52,83 @@ from .serializers import (
     ProductOrderSerializer,
     ProductOrderCreateSerializer,
     OrderStatusUpdateSerializer,
-    PaymentSerializer, CloudinarySignatureSerializer
+    PaymentSerializer, CloudinarySignatureSerializer, SendOTPSerializer, VerifyOTPSerializer
 )
 from .utils import send_notification, generate_cloudinary_signature
 
+from sib_api_v3_sdk import Configuration, ApiClient, TransactionalEmailsApi
+from sib_api_v3_sdk.models import SendSmtpEmail
 
+class SendOTPView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = SendOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+
+        # Generate OTP
+        otp_code = EmailOTP.generate_otp()
+        EmailOTP.objects.create(email=email, otp=otp_code)
+
+        # Send via Brevo
+        configuration = Configuration()
+        configuration.api_key['api-key'] = settings.BREVO_API_KEY
+        api_instance = TransactionalEmailsApi(ApiClient(configuration))
+
+        send_smtp_email = SendSmtpEmail(
+            to=[{"email": email}],
+            sender=settings.BREVO_SENDER,
+            subject="Your Magic Touch Salon Login OTP",
+            html_content=f"""
+                <h2>Your OTP is: <strong>{otp_code}</strong></h2>
+                <p>This OTP is valid for 10 minutes.</p>
+            """
+        )
+
+        try:
+            api_instance.send_transac_email(send_smtp_email)
+            return Response({'message': 'OTP sent successfully'}, status=200)
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+
+class VerifyOTPView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = VerifyOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data['email']
+        otp = serializer.validated_data['otp']
+
+        otp_obj = EmailOTP.objects.filter(email=email, otp=otp, is_used=False).first()
+
+        if not otp_obj or not otp_obj.is_valid():
+            return Response({'error': 'Invalid or expired OTP'}, status=400)
+
+        otp_obj.is_used = True
+        otp_obj.save()
+
+        # Get or Create User
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={'username': email.split('@')[0]}
+        )
+
+        if created:
+            user.set_password(User.objects.make_random_password())
+            user.save()
+
+        # Generate JWT
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserProfileSerializer(user).data
+        })
 # ─────────────────────────────────────────────────────────────
 # AUTH VIEWS
 # ─────────────────────────────────────────────────────────────

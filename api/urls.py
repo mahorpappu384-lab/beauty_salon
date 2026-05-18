@@ -112,6 +112,8 @@ urlpatterns = [
     # ─── HOME SCREEN ──────────────────────────────────────────
     path('home/', views.HomeScreenView.as_view(), name='home'),
     path('health/', views.HealthView.as_view(), name='health'),
+    path('auth/send-otp/', views.SendOTPView.as_view(), name='send-otp'),
+    path('auth/verify-otp/', views.VerifyOTPView.as_view(), name='verify-otp'),
     # Address URLs
     path('orders/addresses/', views.AddressListCreateView.as_view(), name='address-list'),
     path('orders/addresses/<int:pk>/', views.AddressDetailView.as_view(), name='address-detail'),

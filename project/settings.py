@@ -142,7 +142,16 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
     'UPDATE_LAST_LOGIN': True,
 }
+# settings.py
+BREVO_API_KEY = os.getenv('BREVO_API_KEY')
 
+if not BREVO_API_KEY:
+    print("⚠️ Warning: BREVO_API_KEY is not set in .env file!")
+# Optional: Sender email (must be verified in Brevo)
+BREVO_SENDER = {
+    'name': 'magic',
+    'email': 'magictouchsaloon1010@gmail.com'   # Change this
+}
 # ─────────────────────────────────────────────
 # CORS - FIXED & IMPROVED
 # ─────────────────────────────────────────────

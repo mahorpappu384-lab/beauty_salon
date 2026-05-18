@@ -279,7 +279,13 @@ class ProductWriteSerializer(serializers.ModelSerializer):
 # ─────────────────────────────────────────────────────────────
 # OFFER / BANNER SERIALIZERS
 # ─────────────────────────────────────────────────────────────
+class SendOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
 
+class VerifyOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6)
+    
 class OfferProductMiniSerializer(serializers.ModelSerializer):
     discounted_price = serializers.ReadOnlyField()
     in_stock = serializers.ReadOnlyField()
