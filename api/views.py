@@ -32,7 +32,9 @@ from .filters import ServiceFilter, ProductFilter
 from .models import (
     User, ServiceCategory, Service, ProductCategory, Product,
     Offer, TimeSlot, Booking, GalleryPhoto, Wishlist,
-    Review, Notification, Coupon, Payment, Address, ProductOrder, ProductOrderItem, EmailOTP
+    Review, Notification, Coupon, Payment,
+    Address, ProductOrder, ProductOrderItem,
+    EmailOTP, SiteSettings
 )
 from .serializers import (
     CustomTokenObtainPairSerializer, RegisterSerializer,
