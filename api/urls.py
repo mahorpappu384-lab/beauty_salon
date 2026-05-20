@@ -111,6 +111,9 @@ urlpatterns = [
 
     # ─── HOME SCREEN ──────────────────────────────────────────
     path('home/', views.HomeScreenView.as_view(), name='home'),
+    # urls.py mein yeh line add karo
+
+    path('home/splash/', views.SplashUpdateView.as_view(), name='splash-update'),
     path('health/', views.HealthView.as_view(), name='health'),
     path('auth/send-otp/', views.SendOTPView.as_view(), name='send-otp'),
     path('auth/verify-otp/', views.VerifyOTPView.as_view(), name='verify-otp'),

@@ -63,34 +63,76 @@ class SendOTPView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        serializer = SendOTPSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        email = serializer.validated_data['email']
-
-        # Generate OTP
-        otp_code = EmailOTP.generate_otp()
-        EmailOTP.objects.create(email=email, otp=otp_code)
-
-        # Send via Brevo
-        configuration = Configuration()
-        configuration.api_key['api-key'] = settings.BREVO_API_KEY
-        api_instance = TransactionalEmailsApi(ApiClient(configuration))
-
-        send_smtp_email = SendSmtpEmail(
-            to=[{"email": email}],
-            sender=settings.BREVO_SENDER,
-            subject="Your Magic Touch Salon Login OTP",
-            html_content=f"""
-                <h2>Your OTP is: <strong>{otp_code}</strong></h2>
-                <p>This OTP is valid for 10 minutes.</p>
-            """
-        )
-
         try:
-            api_instance.send_transac_email(send_smtp_email)
-            return Response({'message': 'OTP sent successfully'}, status=200)
+            # Validate request
+            serializer = SendOTPSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+
+            email = serializer.validated_data['email']
+
+            # Generate OTP
+            otp_code = EmailOTP.generate_otp()
+
+            print("Generated OTP:", otp_code)
+            print("Sending to:", email)
+            print("Brevo API Key Exists:", bool(settings.BREVO_API_KEY))
+
+            # Configure Brevo
+            configuration = Configuration()
+            configuration.api_key['api-key'] = settings.BREVO_API_KEY
+
+            api_client = ApiClient(configuration)
+            api_instance = TransactionalEmailsApi(api_client)
+
+            # Email object
+            send_smtp_email = SendSmtpEmail(
+                to=[
+                    {
+                        "email": email,
+                    }
+                ],
+                sender={
+                    "name": "Magic Touch Salon",
+                    "email": "magictouchsaloon1010@gmail.com"
+                },
+                subject="Your Magic Touch Salon Login OTP",
+                html_content=f"""
+                <html>
+                    <body>
+                        <h2>Your OTP is: <strong>{otp_code}</strong></h2>
+                        <p>This OTP is valid for 10 minutes.</p>
+                    </body>
+                </html>
+                """
+            )
+
+            # Send email
+            response = api_instance.send_transac_email(send_smtp_email)
+
+            print("Brevo Response:", response)
+
+            # Save OTP only after successful email
+            EmailOTP.objects.create(
+                email=email,
+                otp=otp_code
+            )
+
+            return Response({
+                'message': 'OTP sent successfully'
+            }, status=200)
+
         except Exception as e:
-            return Response({'error': str(e)}, status=500)
+            import traceback
+
+            print("========== OTP ERROR ==========")
+            print(str(e))
+            traceback.print_exc()
+            print("================================")
+
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=500)
 
 
 class VerifyOTPView(APIView):
@@ -873,20 +915,27 @@ class HomeScreenView(APIView):
     Single endpoint for home screen data — ek hi call mein sab.
 
     Response keys:
-      banners          → Active promotional banners (Offer model)
-      categories       → Service categories with icon photos
-      featured_services→ Featured services (6 max)
-      featured_products→ Featured products (6 max)
-      gallery_preview  → Featured gallery photos (4 max)
+      banners            → Active promotional banners (Offer model)
+      categories         → Service categories with icon photos
+      featured_services  → Featured services (6 max)
+      featured_products  → Featured products (6 max)
+      gallery_preview    → Featured gallery photos (4 max)
+      splash_bg_url      → Splash background image URL
+      splash_updated_at  → Splash image last updated time
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
         from django.utils import timezone
         from .serializers import (
-            OfferSerializer, ServiceCategorySerializer,
-            ServiceListSerializer, ProductListSerializer, GalleryPhotoSerializer
+            OfferSerializer,
+            ServiceCategorySerializer,
+            ServiceListSerializer,
+            ProductListSerializer,
+            GalleryPhotoSerializer
         )
+
+        settings = SiteSettings.get()
         now = timezone.now()
 
         # 1. Active banners/offers
@@ -896,33 +945,64 @@ class HomeScreenView(APIView):
             end_date__gte=now
         ).order_by('order')[:8]
 
-        # 2. Service categories (with icon_url for photo chips)
+        # 2. Service categories
         categories = ServiceCategory.objects.filter(
             is_active=True
         ).order_by('order', 'name')
 
         # 3. Featured services
         featured_services = Service.objects.filter(
-            is_active=True, is_featured=True
+            is_active=True,
+            is_featured=True
         ).select_related('category')[:6]
 
         # 4. Featured products
         featured_products = Product.objects.filter(
-            is_active=True, is_featured=True
+            is_active=True,
+            is_featured=True
         ).select_related('category')[:6]
 
         # 5. Gallery preview
         gallery = GalleryPhoto.objects.filter(
-            is_active=True, is_featured=True
+            is_active=True,
+            is_featured=True
         )[:4]
 
-        return Response({
+        # Final response
+        data = {
             'banners': OfferSerializer(banners, many=True).data,
-            'categories': ServiceCategorySerializer(categories, many=True).data,
-            'featured_services': ServiceListSerializer(featured_services, many=True).data,
-            'featured_products': ProductListSerializer(featured_products, many=True).data,
-            'gallery_preview': GalleryPhotoSerializer(gallery, many=True).data,
-        })
+
+            'categories': ServiceCategorySerializer(
+                categories,
+                many=True
+            ).data,
+
+            'featured_services': ServiceListSerializer(
+                featured_services,
+                many=True
+            ).data,
+
+            'featured_products': ProductListSerializer(
+                featured_products,
+                many=True
+            ).data,
+
+            'gallery_preview': GalleryPhotoSerializer(
+                gallery,
+                many=True
+            ).data,
+
+            # ── Splash fields ──
+            'splash_bg_url': settings.splash_bg_url,
+
+            'splash_updated_at': (
+                settings.splash_updated_at.isoformat()
+                if settings.splash_updated_at
+                else None
+            ),
+        }
+
+        return Response(data)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1201,6 +1281,30 @@ class AdminOrderDetailView(generics.RetrieveAPIView):
         'items__product'
     ).select_related('address', 'user')
 
+# views.py mein add karo
+
+class SplashUpdateView(APIView):
+    permission_classes = [IsAdminUser]  # Sirf admin
+
+    def patch(self, request):
+        settings = SiteSettings.get()
+        url = request.data.get('splash_bg_url')  # None aa sakta hai (remove ke liye)
+
+        # Validation
+        if url is not None and not url.startswith('https://'):
+            return Response(
+                {'detail': 'Valid HTTPS URL required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        settings.splash_bg_url = url  # None = local asset use hoga
+        settings.save()
+
+        return Response({
+            'splash_bg_url': settings.splash_bg_url,
+            'splash_updated_at': settings.splash_updated_at.isoformat(),
+        })
+        
 # ─── urls.py mein add karo ────────────────────────────────────────────────────
 """
 # Address URLs

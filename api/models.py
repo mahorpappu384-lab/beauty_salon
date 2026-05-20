@@ -629,3 +629,24 @@ class ProductOrderItem(models.Model):
     @property
     def total(self):
         return float(self.price) * self.quantity
+
+# models.py mein add karo
+
+class SiteSettings(models.Model):
+    """
+    Singleton model — sirf ek row hogi.
+    Admin panel se splash_bg_url yahan save hoga.
+    """
+    splash_bg_url    = models.URLField(blank=True, null=True)
+    splash_updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Site Settings'
+
+    def __str__(self):
+        return 'Site Settings'
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
